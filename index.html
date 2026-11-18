@@ -2,114 +2,157 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101214">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
 <title>REDLINE Camera</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <style>
 /*
-VOICE  instrument panel: terse, uppercase status, nothing decorative
-IDEA   the Flutter starter's dark camera screen, rebuilt for the browser
-PICTURE the live viewfinder is the picture, filling the screen
-COLOUR #101214 body, #08090a viewfinder, one red #d64a3b for shutter and brand
-TYPE   system sans, heavy tracked wordmark, small status lines
+VOICE   a phone camera: the picture is everything, controls recede
+IDEA    the iPhone Camera layout (mode strip, white shutter, zoom pills, thumbnail) with REDLINE's red
+PICTURE the live graded viewfinder, edge to edge on black
+COLOUR  pure black chrome, white controls, REDLINE red for the active mode, iOS yellow for focus
+TYPE    system UI font, small labels, wide tracking only on mode names
 */
-:root{--bg:#101214;--vf:#08090a;--panel:#202428;--red:#d64a3b;--ink:#f2f2f2;--dim:rgba(255,255,255,.55);--ok:#9db9a4;color-scheme:dark}
-*{box-sizing:border-box;min-width:0}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
-.app{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);max-width:760px;margin:0 auto}
-.top{display:flex;align-items:center;gap:9px;padding:12px 20px 14px}
-.brand{font-size:18px;font-weight:800;letter-spacing:2.4px}
-.mode{margin-left:auto;font-weight:700;letter-spacing:1.5px}
-.vf{flex:1;margin:0 12px;border-radius:18px;background:var(--vf);overflow:hidden;position:relative;display:grid;place-items:center}
+:root{--red:#ff453a;--yel:#ffd60a;--ink:#fff;--dim:rgba(255,255,255,.6);color-scheme:dark}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:var(--ink);font:15px/1.35 -apple-system,"SF Pro Text",system-ui,Roboto,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,label:focus-within{outline:2px solid var(--yel);outline-offset:3px}
+.app{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);max-width:820px;margin:0 auto}
+
+/* top bar */
+.top{display:grid;grid-template-columns:48px 1fr 48px;align-items:center;height:52px;padding:0 10px}
+.brand{text-align:center;font-weight:800;letter-spacing:3px;font-size:13px;color:rgba(255,255,255,.85)}
+.brand i{font-style:normal;color:var(--red)}
+.tb{width:44px;height:44px;border-radius:50%;display:grid;place-items:center}
+.tb svg{width:22px;height:22px}
+.tb[aria-pressed=true]{color:var(--yel)}
+.pill{width:auto;padding:0 10px;height:28px;border-radius:999px;border:1.5px solid currentColor;font-size:11px;font-weight:700;letter-spacing:.5px;justify-self:end}
+
+/* viewfinder */
+.vf{flex:1;position:relative;display:grid;place-items:center;overflow:hidden;background:#000;touch-action:none}
 video{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none}
 #view{display:none}#view.on{display:block}#view.mirror{transform:scaleX(-1)}
-.chip{border:1px solid #3a3f44;background:transparent;color:var(--ink);font:600 11px/1 system-ui,sans-serif;letter-spacing:1px;border-radius:999px;padding:6px 10px;min-height:28px;cursor:pointer}
-.chip[aria-pressed=true]{border-color:var(--red);color:#fff;background:rgba(214,74,59,.18)}
-.sci{font-size:10px;letter-spacing:.6px;color:var(--dim);margin-top:5px;min-height:14px}
-.msg{padding:24px;text-align:center;color:var(--dim);max-width:30em}
+.msg{position:absolute;inset:0;display:grid;place-items:center;padding:28px;text-align:center;color:var(--dim)}
+.msg[hidden]{display:none}
 .msg b{color:var(--ink)}
-.spin{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--red);border-radius:50%;animation:s 0.9s linear infinite}
+.msg .box{max-width:30em}
+.spin{width:34px;height:34px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--ink);border-radius:50%;animation:s .9s linear infinite;margin:auto}
 @keyframes s{to{transform:rotate(360deg)}}
-.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
-.flash.go{opacity:.6;transition:none}
-.status{padding:12px 20px 8px}
-.line{font-size:10px;letter-spacing:1.1px;color:rgba(255,255,255,.7);min-height:14px}
-.row{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px;font-size:11px;color:var(--dim)}
-.row b{color:var(--ink);font-size:14px}
-.note{font-size:10px;color:var(--dim);margin-top:5px}
-.saved{font-size:10px;color:var(--ok);margin-top:5px}
-.strip{display:flex;gap:8px;overflow-x:auto;padding:4px 20px 0;min-height:0}
-.strip a{flex:none;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid #333}
-.strip img{width:100%;height:100%;object-fit:cover;display:block}
-.ctl{display:flex;align-items:center;justify-content:space-between;padding:12px 22px 22px}
-.icon{width:48px;height:48px;border-radius:50%;border:0;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}
-.icon:disabled{opacity:.35;cursor:default}
-.icon svg{width:27px;height:27px}
-.shutter{width:76px;height:76px;border-radius:50%;border:4px solid #fff;background:transparent;display:grid;place-items:center;padding:0;cursor:pointer}
-.shutter i{width:60px;height:60px;border-radius:50%;background:var(--red);display:grid;place-items:center}
-.shutter:disabled{opacity:.5;cursor:default}
-.shutter .spin{width:24px;height:24px;border-width:2px;border-top-color:#fff}
-button:focus-visible,.fallback:focus-within{outline:2px solid var(--red);outline-offset:3px}
-.fallback{display:none;margin-top:14px}
-.fallback.on{display:inline-block}
-.fallback label{display:inline-block;padding:11px 18px;border-radius:999px;background:var(--panel);color:var(--ink);cursor:pointer;font-size:14px}
+.fallback{display:inline-block;margin-top:16px}
+.fallback label{display:inline-block;padding:12px 20px;border-radius:999px;background:rgba(255,255,255,.14);color:var(--ink);cursor:pointer;font-size:15px}
 .fallback input{position:absolute;opacity:0;width:1px;height:1px}
-@media (prefers-reduced-motion:reduce){.spin{animation:none}.flash{transition:none}}
+.blink{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .18s}
+.blink.go{opacity:.85;transition:none}
+.focus{position:absolute;width:76px;height:76px;margin:-38px 0 0 -38px;border:1.5px solid var(--yel);pointer-events:none;opacity:0}
+.focus::before,.focus::after{content:"";position:absolute;background:var(--yel)}
+.focus::before{left:50%;top:-1px;width:1.5px;height:7px}.focus::after{top:50%;left:-1px;height:1.5px;width:7px}
+.focus.go{animation:f 1.6s ease-out forwards}
+@keyframes f{0%{opacity:1;transform:scale(1.35)}18%{opacity:1;transform:scale(1)}75%{opacity:1}100%{opacity:0;transform:scale(1)}}
+.readout{position:absolute;left:10px;top:10px;right:10px;font-size:11px;line-height:1.45;color:rgba(255,255,255,.85);background:rgba(0,0,0,.55);border-radius:10px;padding:8px 10px;pointer-events:none}
+.readout[hidden]{display:none}
+.toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);border-radius:999px;padding:6px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1}
+.zoom{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:4px;border-radius:999px;background:rgba(0,0,0,.35)}
+.zoom:empty{display:none}
+.zoom button{width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.45);font-size:11px;font-weight:600}
+.zoom button[aria-pressed=true]{color:var(--yel);font-size:13px}
+.badge{position:absolute;top:12px;right:12px;font-size:10px;font-weight:700;letter-spacing:.6px;padding:3px 7px;border-radius:5px;background:rgba(0,0,0,.45);color:var(--yel)}
+.badge[hidden]{display:none}
+
+/* mode strip + controls */
+.modes{display:flex;justify-content:center;gap:22px;padding:12px 0 6px}
+.modes button{font-size:13px;font-weight:600;letter-spacing:1.2px;color:rgba(255,255,255,.75);padding:6px 2px;min-height:32px}
+.modes button[aria-pressed=true]{color:var(--red)}
+.modes button:disabled{opacity:.3}
+.ctl{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:8px 28px 22px}
+.thumb{width:50px;height:50px;border-radius:9px;overflow:hidden;background:#1c1c1e;border:1px solid #3a3a3c;justify-self:start}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb img:not([src]){display:none}
+.shutter{width:78px;height:78px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center}
+.shutter i{width:64px;height:64px;border-radius:50%;background:#fff;transition:transform .12s,opacity .12s}
+.shutter:active i{transform:scale(.88)}
+.shutter.busy i{opacity:.45;transform:scale(.88)}
+.shutter:disabled{opacity:.45}
+.flip{width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;justify-self:end}
+.flip svg{width:26px;height:26px}
+.flip:disabled{opacity:.35}
+
+/* photo viewer */
+.viewer{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;z-index:5;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.viewer[hidden]{display:none}
+.vbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:8px 12px;gap:8px}
+.vbar .txt{color:#0a84ff;font-size:16px;min-height:44px;padding:0 6px;justify-self:start}
+.vbar .txt:last-child{justify-self:end}
+.seg{display:flex;background:#1c1c1e;border-radius:9px;padding:2px}
+.seg button{padding:6px 12px;border-radius:7px;font-size:13px;font-weight:600;min-height:32px}
+.seg button[aria-pressed=true]{background:#3a3a3c}
+.seg button:disabled{opacity:.35}
+.vimg{flex:1;display:grid;place-items:center;overflow:hidden;padding:4px}
+.vimg img{max-width:100%;max-height:100%;object-fit:contain}
+.vmeta{font-size:11px;color:var(--dim);text-align:center;padding:10px 16px 18px;line-height:1.5}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}.focus.go{animation-duration:.01s}.blink,.toast{transition:none}}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="top">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d64a3b" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-    <span class="brand">REDLINE</span>
-    <span class="mode" id="modeTop">AUTO</span>
+    <button class="tb" id="infoBtn" aria-label="Show processing details" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
+    </button>
+    <div class="brand"><i>●</i> REDLINE</div>
+    <button class="tb pill" id="wideBtn" aria-pressed="false" aria-label="Widescreen 2.39 to 1 crop">2.39</button>
   </header>
 
   <main class="vf" id="vf">
     <video id="video" playsinline muted autoplay></video>
-    <canvas id="view" aria-label="Live preview"></canvas>
-    <div class="msg" id="msg"><div class="spin" style="margin:auto"></div></div>
-    <div class="flash" id="flash"></div>
+    <canvas id="view" aria-label="Live preview. Tap to focus, swipe to change mode."></canvas>
+    <div class="msg" id="msg"><div class="spin"></div></div>
+    <div class="focus" id="focus"></div>
+    <div class="badge" id="hdrBadge" hidden>HDR</div>
+    <div class="readout" id="readout" hidden><div id="status">INITIALISING CAMERA</div><div id="sci"></div><div id="res"></div></div>
+    <div class="zoom" id="zoom"></div>
+    <div class="toast" id="toast"></div>
+    <div class="blink" id="blink"></div>
   </main>
 
-  <section class="status">
-    <div class="line" id="status">INITIALISING CAMERA</div>
-    <div class="row"><b id="modeRow">AUTO</b><span id="lens">LENS: -</span><span id="fmt">FORMAT: JPEG</span><span id="res"></span><button class="chip" id="lookBtn" aria-pressed="true">LOOK: CINEMA</button><button class="chip" id="wideBtn" aria-pressed="false">2.39:1</button></div>
-    <div class="sci" id="sci"></div>
-    <div class="note" id="proNote" hidden>Manual controls are not built yet (milestone M2).</div>
-    <div class="saved" id="saved" hidden></div>
-  </section>
-  <div class="strip" id="strip" aria-label="Captures from this session"></div>
-
-  <nav class="ctl">
-    <button class="icon" id="switch" aria-label="Switch camera" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/><path d="M14 9.5l.4 1.6-1.6.3M10 16.5l-.4-1.6 1.6-.3"/></svg>
-    </button>
-    <button class="shutter" id="shutter" aria-label="Take photo" disabled><i id="shutterInner"></i></button>
-    <button class="icon" id="modeBtn" aria-label="Toggle camera mode">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
-    </button>
+  <nav class="modes" id="modes" aria-label="Look">
+    <button data-look="CINEMA" aria-pressed="true">CINEMA</button>
+    <button data-look="PHOTO" aria-pressed="false">PHOTO</button>
+    <button data-look="OFF" aria-pressed="false">ORIGINAL</button>
   </nav>
+  <div class="ctl">
+    <button class="thumb" id="thumb" aria-label="Open last photo" disabled><img id="thumbImg" alt=""></button>
+    <button class="shutter" id="shutter" aria-label="Take photo" disabled><i></i></button>
+    <button class="flip" id="switch" aria-label="Switch camera" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 12a8 8 0 0 1-13.7 5.6M4 12a8 8 0 0 1 13.7-5.6"/><path d="M17.7 3v3.6h-3.6M6.3 21v-3.6h3.6"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="viewer" id="viewer" hidden>
+  <div class="vbar">
+    <button class="txt" id="vClose">Done</button>
+    <div class="seg"><button id="vGraded" aria-pressed="true">REDLINE</button><button id="vOrig" aria-pressed="false">Original</button></div>
+    <button class="txt" id="vSave">Save</button>
+  </div>
+  <div class="vimg"><img id="vImg" alt="Captured photo"></div>
+  <div class="vmeta" id="vMeta"></div>
 </div>
 
 <script>
 {
 const $ = id => document.getElementById(id);
-const video = $('video'), msg = $('msg');
+const video = $('video'), view = $('view'), msg = $('msg');
 const state = {
-  stream: null,
-  facing: 'environment',   // kept across backgrounding and failed switches
-  starting: false,
-  capturing: false,
-  hidden: document.hidden,
-  mode: 'AUTO',
-  look: 'CINEMA',
-  wide: false,
-  captures: []
+  stream: null, facing: 'environment', starting: false, capturing: false, hidden: document.hidden,
+  look: 'CINEMA', wide: false,
+  zoom: 1, zoomHW: false,          // hardware zoom when the track supports it, otherwise digital crop
+  meter: null,                     // tap-to-expose point {x,y,t}
+  captures: [], viewing: null, viewSide: 'graded'
 };
-const view = $('view');
 
 const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const servedOK = location.protocol === 'https:' || (location.protocol === 'http:' && local);
@@ -117,95 +160,147 @@ const NOT_SERVED = '<b>Chrome won\'t give the live camera to a file.</b><br>This
   (location.protocol === 'content:' ? 'another app (WhatsApp, Files or Downloads)' : 'a file or plain http address') +
   '. Open it from its https:// web address instead. Meanwhile, the button below uses your normal camera.';
 
-/* ===== REDLINE colour pipeline v0.2 =====
-   Works on the camera's processed sRGB output (JPEG / video), NOT sensor RAW.
-   Stages: sRGB decode -> linear light -> auto white balance (grey-world, clamped,
-   half strength, faded out in clipped areas) -> exposure normalisation (half strength,
-   highlight-protected) -> log contrast around mid-grey with soft toe -> highlight
-   shoulder -> orange/teal colour separation -> saturation roll-off -> split tone ->
-   matte black lift -> vignette -> sRGB encode -> film grain.
-   A documented REDLINE transform, not a reproduction of RED IPP2. */
+/* ===== REDLINE colour pipeline v0.3 =====
+   Input is the camera's processed sRGB output (JPEG / video), NOT sensor RAW.
+   Pass 1 (GPU): 4x4-averaged linear-luminance thumbnail = base layer for local tone mapping.
+   Pass 2 (GPU): edge-aware sharpening -> linear light -> auto white balance (grey-world, clamped,
+   half strength, faded out in clipped areas) -> exposure normalisation (half strength, highlight-
+   protected, tap-to-meter) -> local tone mapping (compress base, keep detail: lifts shadows, holds
+   highlights) -> log contrast + soft toe -> highlight shoulder -> orange/teal separation ->
+   saturation -> split tone -> matte lift -> vignette -> sRGB.
+   A documented REDLINE transform, not a reproduction of RED IPP2 or Apple's pipeline. */
 const LOOKS = {
-  CINEMA:  { bias: 0.90, con: 1.32, knee: 0.52, lift: 0.005, satMid: 0.93, satHi: 0.58, axis: 1.25, ortho: 0.60,
-             sh: [0.93, 1.0, 1.08], hi: [1.06, 1.0, 0.92], vig: 0.30, grain: 0.035 },
-  NATURAL: { bias: 1.00, con: 1.07, knee: 0.60, lift: 0.0,   satMid: 0.95, satHi: 0.75, axis: 1.0,  ortho: 1.0,
-             sh: [0.985, 1.0, 1.025], hi: [1.025, 1.0, 0.975], vig: 0.0, grain: 0.0 }
+  PHOTO:  { bias: 1.08, ltm: 0.38, sharp: 0.45, con: 1.12, knee: 0.75, lift: 0.0,   satMid: 1.08, satHi: 0.85, axis: 1.0,  ortho: 1.0,
+            sh: [1.0, 1.0, 1.0], hi: [1.012, 1.0, 0.99], vig: 0.0 },
+  CINEMA: { bias: 0.93, ltm: 0.25, sharp: 0.30, con: 1.30, knee: 0.52, lift: 0.003, satMid: 0.92, satHi: 0.60, axis: 1.22, ortho: 0.62,
+            sh: [0.94, 1.0, 1.07], hi: [1.05, 1.0, 0.93], vig: 0.15 }
 };
-const LOOK_ORDER = ['CINEMA', 'NATURAL', 'OFF'];
-const FS = `precision highp float;
-varying vec2 v; uniform sampler2D t;
-uniform vec3 gain, shT, hiT; uniform vec2 crop;
-uniform float expo, on, con, knee, lift, satMid, satHi, axisG, orthoG, vig, grain, aspect, seed, gscale;
+const MODES = ['CINEMA', 'PHOTO', 'OFF'];
+const MODE_NAME = { CINEMA: 'CINEMA', PHOTO: 'PHOTO', OFF: 'ORIGINAL' };
+
+const GLSL_COMMON = `precision highp float;
 vec3 toLin(vec3 c){ return mix(c/12.92, pow((c+0.055)/1.055, vec3(2.4)), step(0.04045, c)); }
 vec3 toSRGB(vec3 c){ c=clamp(c,0.0,1.0); return mix(c*12.92, 1.055*pow(c, vec3(1.0/2.4))-0.055, step(0.0031308, c)); }
 float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
-float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
-const vec3 AX = vec3(0.816, -0.188, -0.547);   // orange (+) / teal (-) chroma axis, linear light
+`;
+const VS = `attribute vec2 p; varying vec2 v; void main(){ v = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p, 0.0, 1.0); }`;
+// Framebuffer rows are stored bottom-up, so pass 1 uses un-flipped coordinates: memory row 0 then
+// holds the top of the image, matching how pass 2 samples the base texture with v.
+const VS_FB = `attribute vec2 p; varying vec2 v; void main(){ v = p*0.5+0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+const FS_DOWN = GLSL_COMMON + `
+varying vec2 v; uniform sampler2D t; uniform vec4 crop; uniform vec2 stp;
 void main(){
-  vec3 s = texture2D(t, vec2(v.x, crop.x + v.y * crop.y)).rgb;
+  float acc = 0.0;
+  for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++){
+    vec2 o = (vec2(float(i), float(j)) - 1.5) * stp;
+    acc += luma(toLin(texture2D(t, crop.xy + clamp(v + o, 0.0, 1.0) * crop.zw).rgb));
+  }
+  gl_FragColor = vec4(vec3(sqrt(acc / 16.0)), 1.0);
+}`;
+const FS_GRADE = GLSL_COMMON + `
+varying vec2 v; uniform sampler2D t, baseT;
+uniform vec3 gain, shT, hiT; uniform vec4 crop; uniform vec2 tx, bstp;
+uniform float expo, on, ltm, sharp, con, knee, lift, satMid, satHi, axisG, orthoG, vig, aspect;
+const vec3 AX = vec3(0.816, -0.188, -0.547);   // orange (+) / teal (-) chroma axis
+void main(){
+  vec2 uv = crop.xy + v * crop.zw;
+  vec3 s = texture2D(t, uv).rgb;
   if (on < 0.5) { gl_FragColor = vec4(s, 1.0); return; }
-  // Clipped pixels carry no colour information: fade white balance out there.
+  // Edge-aware sharpening: skip tiny differences so noise is not amplified.
+  vec3 bl = 0.25 * (texture2D(t, uv + vec2(tx.x, 0.0)).rgb + texture2D(t, uv - vec2(tx.x, 0.0)).rgb +
+                    texture2D(t, uv + vec2(0.0, tx.y)).rgb + texture2D(t, uv - vec2(0.0, tx.y)).rgb);
+  vec3 dd = s - bl;
+  s = clamp(s + sharp * dd * smoothstep(0.004, 0.025, abs(dd.r + dd.g + dd.b) / 3.0), 0.0, 1.0);
   float clipW = smoothstep(0.90, 1.0, min(s.r, min(s.g, s.b)));
   vec3 c = toLin(s) * mix(gain, vec3(1.0), clipW) * expo;
-  // Tone: log contrast around 18% grey, soft toe, highlight shoulder.
+  // Local tone mapping: compress the blurred base layer around 18% grey, keep local detail.
+  float b = 0.0;
+  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++){
+    float q = texture2D(baseT, v + vec2(float(i), float(j)) * bstp * 1.5).r; b += q * q;
+  }
+  float B = max(b / 9.0 * expo, 1e-4);
+  // Asymmetric: lift shadows fully, compress highlights only lightly so whites stay white.
+  float Bt = 0.18 * pow(B / 0.18, 1.0 - (B < 0.18 ? ltm : ltm * 0.3));
+  c *= clamp(Bt / B, 0.6, 2.4);
+  // Global tone curve.
   float L = max(luma(c), 1e-5);
   float Lc = 0.18 * pow(L / 0.18, con);
   Lc = mix(Lc, L, smoothstep(0.03, 0.0, L));
   float Ls = Lc < knee ? Lc : knee + (1.0 - knee) * (1.0 - exp(-(Lc - knee) / (1.0 - knee)));
   c *= Ls / L;
-  // Colour: push chroma onto the orange/teal axis (skin sits on the orange side).
+  // Colour.
   float y = luma(c);
   vec3 d = c - y; float k = dot(d, AX); vec3 o = d - k * AX;
-  c = y + k * AX * axisG + o * orthoG;
-  c = max(c, 0.0); y = luma(c);
-  c = mix(vec3(y), c, mix(satMid, satHi, smoothstep(0.45, 0.95, y)));
-  // Split tone: cool shadows, warm highlights.
+  c = max(y + k * AX * axisG + o * orthoG, 0.0); y = luma(c);
+  c = max(mix(vec3(y), c, mix(satMid, satHi, smoothstep(0.45, 0.95, y))), 0.0);
   c *= mix(vec3(1.0), shT, 1.0 - smoothstep(0.0, 0.25, y)) * mix(vec3(1.0), hiT, smoothstep(0.3, 0.9, y));
-  // Matte blacks and vignette.
   c = c * (1.0 - lift) + lift * shT;
-  vec2 q = (v - 0.5) * vec2(aspect, 1.0);
-  float r = length(q) / length(vec2(aspect, 1.0) * 0.5);
-  c *= 1.0 - vig * smoothstep(0.35, 1.05, r);
-  vec3 outc = toSRGB(c);
-  // Film grain, strongest in the mid-tones, sized as if the frame were 1080 px tall.
-  float gy = luma(outc);
-  float n = hash(floor(v * vec2(aspect, 1.0) * gscale) + seed) - 0.5;
-  outc += n * grain * (1.0 - abs(gy * 2.0 - 1.0) * 0.7);
-  gl_FragColor = vec4(clamp(outc, 0.0, 1.0), 1.0);
+  vec2 qv = (v - 0.5) * vec2(aspect, 1.0);
+  c *= 1.0 - vig * smoothstep(0.35, 1.05, length(qv) / length(vec2(aspect, 1.0) * 0.5));
+  gl_FragColor = vec4(toSRGB(c), 1.0);
 }`;
-const VS = `attribute vec2 p; varying vec2 v; void main(){ v = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p, 0.0, 1.0); }`;
 
 function createGrader(canvas){
   const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, premultipliedAlpha: false, antialias: false });
   if (!gl) return null;
   const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o);
     if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
-  const prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
-  gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-  gl.useProgram(prog);
+  const program = (vs, fs, names) => {
+    const pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(pr, 0, 'p'); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+    const U = {}; for (const n of names) U[n] = gl.getUniformLocation(pr, n);
+    return { pr, U };
+  };
+  const down = program(VS_FB, FS_DOWN, ['t', 'crop', 'stp']);
+  const grade = program(VS, FS_GRADE, ['t','baseT','gain','shT','hiT','crop','tx','bstp','expo','on','ltm','sharp','con','knee','lift','satMid','satHi','axisG','orthoG','vig','aspect']);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
-  for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
-  const U = {}; for (const n of ['gain','shT','hiT','crop','expo','on','con','knee','lift','satMid','satHi','axisG','orthoG','vig','grain','aspect','seed','gscale']) U[n] = gl.getUniformLocation(prog, n);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const mkTex = () => { const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx);
+    for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
+    return tx; };
+  const srcTex = mkTex(), baseTex = mkTex(), fb = gl.createFramebuffer();
+  let bw = 0, bh = 0;
   return {
     maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-    draw(src, m, lookName, crop, seed){
-      const L = LOOKS[lookName] || LOOKS.NATURAL, on = lookName !== 'OFF';
-      gl.viewport(0, 0, canvas.width, canvas.height);
+    draw(src, sw, sh, m, lookName, crop){
+      const on = lookName !== 'OFF', L = LOOKS[lookName] || LOOKS.PHOTO;
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src);
-      gl.uniform3fv(U.gain, m.gain); gl.uniform1f(U.expo, m.expo * (on ? L.bias : 1)); gl.uniform1f(U.on, on ? 1 : 0);
-      gl.uniform2fv(U.crop, crop || [0, 1]);
+      if (on){
+        // Pass 1: base layer at about 128 px on the long side, rows stored top-down like the source.
+        const aw = sw * crop[2], ah = sh * crop[3], s = 128 / Math.max(aw, ah);
+        const nbw = Math.max(8, Math.round(aw * s)), nbh = Math.max(8, Math.round(ah * s));
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, baseTex);
+        if (nbw !== bw || nbh !== bh){
+          bw = nbw; bh = nbh;
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, bw, bh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, baseTex, 0);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, bw, bh);
+        gl.useProgram(down.pr);
+        gl.uniform1i(down.U.t, 0); gl.uniform4fv(down.U.crop, crop); gl.uniform2f(down.U.stp, 0.25 / bw, 0.25 / bh);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, baseTex);
+      }
+      // Pass 2: grade.
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      const U = grade.U; gl.useProgram(grade.pr);
+      gl.uniform1i(U.t, 0); gl.uniform1i(U.baseT, 1);
+      gl.uniform4fv(U.crop, crop); gl.uniform1f(U.on, on ? 1 : 0);
+      gl.uniform2f(U.tx, 1 / sw, 1 / sh); gl.uniform2f(U.bstp, 1 / (bw || 1), 1 / (bh || 1));
+      gl.uniform3fv(U.gain, m.gain); gl.uniform1f(U.expo, m.expo * L.bias);
+      gl.uniform1f(U.ltm, L.ltm); gl.uniform1f(U.sharp, L.sharp);
       gl.uniform1f(U.con, L.con); gl.uniform1f(U.knee, L.knee); gl.uniform1f(U.lift, L.lift);
       gl.uniform1f(U.satMid, L.satMid); gl.uniform1f(U.satHi, L.satHi);
       gl.uniform1f(U.axisG, L.axis); gl.uniform1f(U.orthoG, L.ortho);
-      gl.uniform3fv(U.shT, L.sh); gl.uniform3fv(U.hiT, L.hi);
-      gl.uniform1f(U.vig, L.vig); gl.uniform1f(U.grain, L.grain);
+      gl.uniform3fv(U.shT, L.sh); gl.uniform3fv(U.hiT, L.hi); gl.uniform1f(U.vig, L.vig);
       gl.uniform1f(U.aspect, canvas.width / canvas.height);
-      gl.uniform1f(U.gscale, Math.min(1080, canvas.height));
-      gl.uniform1f(U.seed, seed || 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   };
@@ -214,107 +309,114 @@ function createGrader(canvas){
 // Scene analysis on a small thumbnail: white-balance gains and exposure gain.
 const probe = document.createElement('canvas'); probe.width = 96; probe.height = 54;
 const pctx = probe.getContext('2d', { willReadFrequently: true });
-const lin = x => { x /= 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
-const LUT = Array.from({ length: 256 }, (_, i) => lin(i));
+const LUT = Array.from({ length: 256 }, (_, i) => { const x = i / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-function measure(src){
+function measure(src, pt){
   pctx.drawImage(src, 0, 0, 96, 54);
   const d = pctx.getImageData(0, 0, 96, 54).data;
-  let r = 0, g = 0, b = 0, n = 0, logSum = 0, m = 0; const lums = [];
-  for (let i = 0; i < d.length; i += 4){
+  let r = 0, g = 0, b = 0, n = 0, logSum = 0, wSum = 0; const lums = [];
+  for (let i = 0, p = 0; i < d.length; i += 4, p++){
     const R = LUT[d[i]], G = LUT[d[i+1]], B = LUT[d[i+2]];
     const Y = 0.2126*R + 0.7152*G + 0.0722*B;
-    lums.push(Y); logSum += Math.log(Y + 1e-4); m++;
-    if (Y > 0.03 && Y < 0.85 && Math.max(R, G, B) < 0.98){ r += R; g += G; b += B; n++; } // skip clipped/black pixels
+    let w = 1;
+    if (pt){ const dx = (p % 96) / 96 - pt.x, dy = Math.floor(p / 96) / 54 - pt.y; w = Math.exp(-(dx*dx + dy*dy) / 0.012) + 0.04; }
+    lums.push(Y); logSum += w * Math.log(Y + 1e-4); wSum += w;
+    if (Y > 0.03 && Y < 0.85 && Math.max(R, G, B) < 0.98){ r += R; g += G; b += B; n++; }
   }
   let gain = [1, 1, 1];
   if (n > 50 && r > 0 && b > 0){
-    gain = [clamp(g / r, 0.85, 1.15), 1, clamp(g / b, 0.85, 1.15)];
-    gain = gain.map(x => 1 + (x - 1) * 0.5);           // half strength: keep the scene's mood
+    gain = [clamp(g / r, 0.85, 1.15), 1, clamp(g / b, 0.85, 1.15)].map(x => 1 + (x - 1) * 0.5);
   }
   lums.sort((a, c) => a - c);
   const p98 = lums[Math.floor(lums.length * 0.98)] || 1;
-  const avg = Math.exp(logSum / m);
-  // The camera's own auto-exposure already ran: only darken if highlights are clipping.
-  let e = clamp(0.18 / Math.max(avg, 1e-3), p98 > 0.95 ? 0.8 : 0.95, 1.33);
-  e = Math.sqrt(e);                                    // half strength in stops
-  if (e > 1) e = Math.min(e, Math.max(1, 0.98 / p98)); // never push important highlights into clipping
+  const avg = Math.exp(logSum / wSum);
+  // Never darken the mid-tones much: tone mapping, not exposure, protects the highlights.
+  let e = clamp(0.18 / Math.max(avg, 1e-3), 0.9, pt ? 2.0 : 1.33);
+  e = pt ? Math.pow(e, 0.75) : Math.sqrt(e);
+  if (e > 1 && !pt) e = Math.min(e, Math.max(1, 0.98 / p98));
   return { gain, expo: e, ev: Math.log2(e), p98 };
 }
 
-// 2.39:1 widescreen crop (centre), as a fraction of the source height.
+// Crop rectangle [x0, y0, w, h] in source fractions: digital zoom, then 2.39:1.
 function cropFor(w, h){
-  if (!state.wide || !w || !h) return [0, 1];
-  const ch = Math.min(1, (w / h) / 2.39);
-  return [(1 - ch) / 2, ch];
+  const z = state.zoomHW ? 1 : state.zoom;
+  let cw = 1 / z, ch = 1 / z;
+  if (state.wide && w && h){ const a = (w * cw) / (h * ch); if (a < 2.39) ch *= a / 2.39; }
+  return [(1 - cw) / 2, (1 - ch) / 2, cw, ch];
 }
 
-let preview = null, live = { gain: [1, 1, 1], expo: 1, ev: 0 }, frameN = 0;
-try { preview = createGrader(view); } catch (e) { preview = null; console.warn('REDLINE look unavailable', e); }
-if (!preview){ state.look = 'OFF'; }
+let preview = null, live = { gain: [1, 1, 1], expo: 1, ev: 0, p98: 0 }, frameN = 0;
+try { preview = createGrader(view); } catch (e) { preview = null; console.warn('REDLINE grading unavailable', e); }
+if (!preview) state.look = 'OFF';
 
 function fitView(){
-  const vw = video.videoWidth, vh0 = video.videoHeight; if (!vw || !vh0) return;
-  const vh = Math.round(vh0 * cropFor(vw, vh0)[1]);
-  const box = $('vf'), bw = box.clientWidth, bh = box.clientHeight;
-  const k = Math.min(bw / vw, bh / vh), cw = Math.round(vw * k), ch = Math.round(vh * k);
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const W = Math.min(vw, Math.round(cw * dpr)), H = Math.min(vh, Math.round(ch * dpr));
+  const vw0 = video.videoWidth, vh0 = video.videoHeight; if (!vw0 || !vh0) return;
+  const cr = cropFor(vw0, vh0), vw = vw0 * cr[2], vh = vh0 * cr[3];
+  const box = $('vf'), k = Math.min(box.clientWidth / vw, box.clientHeight / vh);
+  const cw = Math.round(vw * k), ch = Math.round(vh * k), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = Math.min(Math.round(vw), Math.round(cw * dpr)), H = Math.min(Math.round(vh), Math.round(ch * dpr));
   if (view.width !== W || view.height !== H){ view.width = W; view.height = H; }
   if (view.style.width !== cw + 'px' || view.style.height !== ch + 'px'){ view.style.width = cw + 'px'; view.style.height = ch + 'px'; }
 }
 function sciText(m){
-  if (!preview) return 'REDLINE LOOK UNAVAILABLE ON THIS DEVICE (NO WEBGL)';
-  if (state.look === 'OFF') return 'LOOK OFF · SHOWING CAMERA OUTPUT AS DELIVERED';
-  const f = x => x.toFixed(2);
-  return 'REDLINE v0.2 · ' + state.look + ' · WB R×' + f(m.gain[0]) + ' B×' + f(m.gain[2]) + ' · EV ' + (m.ev >= 0 ? '+' : '') + m.ev.toFixed(2) + (state.wide ? ' · 2.39:1' : '');
+  if (!preview) return 'Grading unavailable on this device (no WebGL).';
+  if (state.look === 'OFF') return 'ORIGINAL · camera output as delivered';
+  const L = LOOKS[state.look], f = x => x.toFixed(2);
+  return 'REDLINE v0.3 · ' + state.look + ' · WB R×' + f(m.gain[0]) + ' B×' + f(m.gain[2]) +
+    ' · EV ' + (m.ev >= 0 ? '+' : '') + m.ev.toFixed(2) + ' · HDR ' + Math.round(L.ltm * 100) + '%' +
+    (state.meter ? ' · TAP-METERED' : '') + (state.wide ? ' · 2.39:1' : '');
 }
 function renderLoop(){
   requestAnimationFrame(renderLoop);
   if (!state.stream || !preview || video.readyState < 2) return;
+  if (state.meter && performance.now() - state.meter.t > 8000) state.meter = null;
   if (frameN % 8 === 0){
-    const m = measure(video), a = 0.15;  // smoothed so colour stays stable during a shot
-    live = { gain: live.gain.map((x, i) => x + (m.gain[i] - x) * a), expo: live.expo + (m.expo - live.expo) * a };
+    const m = measure(video, state.meter), a = 0.18;   // smoothed: colour stays stable during a shot
+    live = { gain: live.gain.map((x, i) => x + (m.gain[i] - x) * a), expo: live.expo + (m.expo - live.expo) * a, p98: m.p98 };
     live.ev = Math.log2(live.expo);
+    $('hdrBadge').hidden = state.look === 'OFF' || !(m.p98 > 0.85 || m.expo > 1.1);
   }
-  if (frameN % 30 === 0) $('sci').textContent = sciText(live);
+  if (frameN % 20 === 0) $('sci').textContent = sciText(live);
   frameN++;
   fitView();
-  preview.draw(video, live, state.look, cropFor(video.videoWidth, video.videoHeight), (frameN % 64) * 0.137);
+  preview.draw(video, video.videoWidth, video.videoHeight, live, state.look, cropFor(video.videoWidth, video.videoHeight));
 }
 requestAnimationFrame(renderLoop);
 
-async function gradeFull(blob){
+async function gradeFull(blob, lookName, meter){
   const bmp = await createImageBitmap(blob);
-  const m = measure(bmp);
-  const c = document.createElement('canvas');
-  const g = createGrader(c);
+  const m = measure(bmp, meter);
+  const c = document.createElement('canvas'), g = createGrader(c);
+  if (!g) throw new Error('WebGL unavailable');
   const crop = cropFor(bmp.width, bmp.height);
   const k = Math.min(1, g.maxTex / Math.max(bmp.width, bmp.height));
   const sw = Math.round(bmp.width * k), sh = Math.round(bmp.height * k);
-  c.width = sw; c.height = Math.round(sh * crop[1]);
+  c.width = Math.round(sw * crop[2]); c.height = Math.round(sh * crop[3]);
   let src = bmp;
   if (k < 1){ const tmp = document.createElement('canvas'); tmp.width = sw; tmp.height = sh; tmp.getContext('2d').drawImage(bmp, 0, 0, sw, sh); src = tmp; }
-  g.draw(src, m, state.look, crop, Math.random() * 10);
+  g.draw(src, sw, sh, m, lookName, crop);
   const out = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Encoding failed')), 'image/jpeg', 0.95));
-  bmp.close && bmp.close();
-  return { blob: out, m };
+  if (bmp.close) bmp.close();
+  return { blob: out, m, w: c.width, h: c.height };
 }
 
+/* ===== UI helpers ===== */
 function setStatus(t){ $('status').textContent = t; }
 function lensLabel(f){ return f === 'user' ? 'FRONT' : 'BACK'; }
+let toastT = 0;
+function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1600); }
+function fallbackHTML(){
+  return '<div class="fallback"><label>Use the phone\'s camera app<input type="file" accept="image/*" capture="environment"></label></div>';
+}
 function showMessage(html, fallback){
   showLive(false);
   msg.hidden = false;
-  msg.innerHTML = html + (fallback ? fallbackHTML() : '');
+  msg.innerHTML = '<div class="box">' + html + (fallback ? fallbackHTML() : '') + '</div>';
   const inp = msg.querySelector('input'); if (inp) inp.addEventListener('change', onFallbackFile);
 }
-function fallbackHTML(){
-  return '<div class="fallback on"><label>Use the phone\'s camera app<input type="file" accept="image/*" capture="environment"></label></div>';
-}
 function showLive(on){
-  if (preview){ view.classList.toggle('on', on); }
-  else { // no WebGL: show the raw video instead
+  if (preview) view.classList.toggle('on', on);
+  else {
     video.style.cssText = on ? 'position:static;width:100%;height:100%;object-fit:contain;opacity:1' : '';
     video.style.transform = on && state.facing === 'user' ? 'scaleX(-1)' : '';
   }
@@ -324,204 +426,230 @@ function updateButtons(){
   $('shutter').disabled = !live || state.capturing;
   $('switch').disabled = !live || state.capturing;
 }
-
-function stopStream(){
-  if (state.stream){ state.stream.getTracks().forEach(t => t.stop()); }
-  state.stream = null;
-  video.srcObject = null;
-  showLive(false);
-  updateButtons();
+function setLook(l){
+  if (!preview && l !== 'OFF') return;
+  state.look = l;
+  for (const b of document.querySelectorAll('#modes button')) b.setAttribute('aria-pressed', String(b.dataset.look === l));
+  $('sci').textContent = sciText(live);
+  toast(MODE_NAME[l]);
 }
 
+/* ===== zoom ===== */
+function setupZoom(){
+  const track = state.stream && state.stream.getVideoTracks()[0];
+  const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+  let stops = [1, 2];
+  state.zoomHW = !!(caps.zoom && caps.zoom.max >= 2);
+  if (state.zoomHW){
+    stops = [0.5, 1, 2, 3].filter(z => z >= caps.zoom.min - 1e-3 && z <= caps.zoom.max + 1e-3);
+  }
+  state.zoom = 1;
+  $('zoom').innerHTML = stops.map(z => '<button data-z="' + z + '" aria-pressed="' + (z === 1) + '">' + (z === 1 ? '1×' : (z < 1 ? '.5' : z)) + '</button>').join('');
+}
+async function setZoom(z){
+  state.zoom = z;
+  for (const b of document.querySelectorAll('#zoom button')){
+    const bz = Number(b.dataset.z), on = bz === z; b.setAttribute('aria-pressed', String(on));
+    b.textContent = on ? (bz < 1 ? '0.5×' : bz + '×') : (bz < 1 ? '.5' : String(bz));
+  }
+  if (state.zoomHW){
+    try { await state.stream.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom: z }] }); }
+    catch (_) { state.zoomHW = false; }
+  }
+  toast((z < 1 ? '0.5' : z) + '×' + (state.zoomHW ? '' : ' digital'));
+}
+
+/* ===== camera ===== */
+function stopStream(){
+  if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+  state.stream = null; video.srcObject = null; showLive(false); updateButtons();
+}
 async function openStream(facing){
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { facingMode: { ideal: facing }, width: { ideal: 4096 }, height: { ideal: 2160 } }
+    audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 4096 }, height: { ideal: 2160 } }
   });
-  // Page hidden while the permission prompt / camera was opening: release it.
   if (state.hidden){ stream.getTracks().forEach(t => t.stop()); return false; }
-  state.stream = stream;
-  state.facing = facing;
+  state.stream = stream; state.facing = facing;
   video.srcObject = stream;
   view.classList.toggle('mirror', facing === 'user');
   await video.play().catch(() => {});
-  showLive(true);
-  msg.hidden = true;
+  showLive(true); msg.hidden = true;
   const s = stream.getVideoTracks()[0].getSettings();
-  $('lens').textContent = 'LENS: ' + lensLabel(s.facingMode || facing);
-  $('res').textContent = s.width && s.height ? s.width + '×' + s.height : '';
-  setStatus('AUTO EXPOSURE · AUTO WHITE BALANCE (BROWSER)');
+  $('res').textContent = 'LENS ' + lensLabel(s.facingMode || facing) + (s.width ? ' · ' + s.width + '×' + s.height : '');
+  setupZoom();
+  setStatus('LIVE · AUTO EXPOSURE · AUTO WB');
   return true;
 }
-
 function explain(err){
   const n = err && err.name;
   if (n === 'NotAllowedError' || n === 'SecurityError')
-    return servedOK
-      ? '<b>Camera permission was refused.</b><br>Tap the icon left of the address bar, set Camera to Allow, then reload.'
-      : NOT_SERVED;
-  if (n === 'NotFoundError' || n === 'OverconstrainedError')
-    return '<b>No usable camera was found.</b>';
-  if (n === 'NotReadableError')
-    return '<b>The camera is busy.</b><br>Another app may be using it. Close it and reload.';
+    return servedOK ? '<b>Camera permission was refused.</b><br>Tap the icon left of the address bar, set Camera to Allow, then reload.' : NOT_SERVED;
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return '<b>No usable camera was found.</b>';
+  if (n === 'NotReadableError') return '<b>The camera is busy.</b><br>Another app may be using it. Close it and reload.';
   return '<b>Unable to start camera.</b><br>' + (err && err.message ? err.message : String(err));
 }
-
 async function start(){
   if (state.starting || state.stream || state.hidden) return;
   if (!servedOK || !window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     setStatus('LIVE CAMERA UNAVAILABLE · NOT OPENED FROM A WEB ADDRESS');
-    showMessage(NOT_SERVED, true);
-    return;
+    showMessage(NOT_SERVED, true); return;
   }
   state.starting = true; updateButtons();
-  showMessage('<div class="spin" style="margin:auto"></div>');
-  try {
-    await openStream(state.facing);
-  } catch (err) {
-    setStatus('CAMERA ERROR: ' + (err.name || 'UNKNOWN'));
-    showMessage(explain(err), true);
-  } finally {
-    state.starting = false; updateButtons();
-  }
+  showMessage('<div class="spin"></div>');
+  try { await openStream(state.facing); }
+  catch (err) { setStatus('CAMERA ERROR: ' + (err.name || 'UNKNOWN')); showMessage(explain(err), true); }
+  finally { state.starting = false; updateButtons(); }
 }
-
 async function switchCamera(){
   if (!state.stream || state.starting || state.capturing) return;
-  const previous = state.facing;
-  const next = previous === 'user' ? 'environment' : 'user';
-  state.starting = true;
-  setStatus('SWITCHING CAMERA');
-  stopStream();  // some phones cannot open two cameras at once
-  showMessage('<div class="spin" style="margin:auto"></div>');
+  const previous = state.facing, next = previous === 'user' ? 'environment' : 'user';
+  state.starting = true; setStatus('SWITCHING CAMERA');
+  stopStream(); showMessage('<div class="spin"></div>');
   try {
     await openStream(next);
     const got = state.stream && state.stream.getVideoTracks()[0].getSettings().facingMode;
-    if (got && got !== next) setStatus('ONLY ONE CAMERA AVAILABLE · KEPT ' + lensLabel(got));
+    if (got && got !== next) toast('Only one camera available');
   } catch (err) {
-    try {
-      await openStream(previous);
-      setStatus('LENS SWITCH FAILED · KEPT ' + lensLabel(previous) + ' CAMERA');
-    } catch (err2) {
-      setStatus('LENS SWITCH FAILED: ' + (err.name || 'UNKNOWN'));
-      showMessage(explain(err2), true);
-    }
-  } finally {
-    state.starting = false; updateButtons();
-  }
+    try { await openStream(previous); toast('Lens switch failed'); }
+    catch (err2) { setStatus('LENS SWITCH FAILED: ' + (err.name || 'UNKNOWN')); showMessage(explain(err2), true); }
+  } finally { state.starting = false; updateButtons(); }
 }
-
 async function grabBlob(){
   const track = state.stream.getVideoTracks()[0];
-  // Real still photo where the browser supports it (mainly Chrome on Android).
   if ('ImageCapture' in window){
-    try {
-      const blob = await new ImageCapture(track).takePhoto();
-      if (blob && blob.size) return { blob, kind: 'STILL PHOTO' };
-    } catch (_) { /* fall through to a preview frame */ }
+    try { const blob = await new ImageCapture(track).takePhoto(); if (blob && blob.size) return { blob, kind: 'Still photo' }; }
+    catch (_) { /* fall back to a preview frame */ }
   }
   const w = video.videoWidth, h = video.videoHeight;
   if (!w || !h) throw new Error('No frame available yet');
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   c.getContext('2d').drawImage(video, 0, 0, w, h);
   const blob = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Encoding failed')), 'image/jpeg', 0.95));
-  return { blob, kind: 'PREVIEW FRAME' };
+  return { blob, kind: 'Preview frame' };
 }
 
+/* ===== capture + save ===== */
 function stamp(){ return new Date().toISOString().replace(/:/g, '-').replace(/\..+/, ''); }
+function extOf(blob){ const t = blob.type || 'image/jpeg'; return t.includes('png') ? 'png' : t.includes('heic') ? 'heic' : 'jpg'; }
+function download(url, name){ const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
 
-function save(blob, kind, tag){
-  const type = blob.type || 'image/jpeg';
-  const ext = type.includes('png') ? 'png' : type.includes('heic') ? 'heic' : 'jpg';
-  const name = 'REDLINE_' + stamp() + (tag || '') + '.' + ext;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-  state.captures.unshift({ url, name });
-  $('strip').insertAdjacentHTML('afterbegin', '<a href="' + url + '" download="' + name + '" title="' + name + '"><img alt="Capture ' + name + '" src="' + url + '"></a>');
-  $('fmt').textContent = 'FORMAT: ' + ext.toUpperCase();
-  $('saved').hidden = false;
-  $('saved').textContent = 'Saved ' + name + ' to your downloads (' + kind.toLowerCase() + ').';
-  setStatus('CAPTURE SAVED · ' + kind + ' · ' + ext.toUpperCase());
-  return name;
-}
-
-// Non-destructive: keep the camera's original, then add the REDLINE version.
 async function finish(blob, kind){
-  const orig = save(blob, kind, '_ORIGINAL');
-  if (state.look === 'OFF' || !preview){ $('saved').textContent = 'Saved ' + orig + ' (look off, original only).'; return; }
+  const base = 'REDLINE_' + stamp();
+  const cap = { kind, look: state.look, orig: { url: URL.createObjectURL(blob), name: base + '_ORIGINAL.' + extOf(blob) }, graded: null, m: null };
+  const cr = cropFor(1, 1), cropped = cr[2] < 1 || cr[3] < 1;
   try {
-    const { blob: graded, m } = await gradeFull(blob);
-    const name = save(graded, kind + ' + REDLINE', '_REDLINE');
-    $('saved').textContent = 'Saved ' + orig + ' and ' + name + '.';
-    $('sci').textContent = 'LAST CAPTURE · ' + sciText(m);
-  } catch (err) {
-    $('saved').textContent = 'Saved ' + orig + '. REDLINE processing failed: ' + (err.message || err);
-  }
+    if (preview && (state.look !== 'OFF' || cropped)){
+      const g = await gradeFull(blob, state.look, state.meter);
+      const tag = state.look === 'OFF' ? 'ORIGINAL_CROP' : state.look;
+      cap.graded = { url: URL.createObjectURL(g.blob), name: base + '_' + tag + '.jpg', w: g.w, h: g.h };
+      cap.m = g.m;
+    }
+  } catch (err) { toast('Processing failed, original saved'); console.warn(err); }
+  const keep = cap.graded || cap.orig;
+  download(keep.url, keep.name);              // one file per shot; the original stays in the viewer
+  state.captures.unshift(cap);
+  $('thumbImg').src = keep.url; $('thumb').disabled = false;
+  setStatus('SAVED · ' + keep.name);
+  toast('Saved');
+  return cap;
 }
-
 async function capture(){
   if (!state.stream || state.capturing || state.starting) return;
-  state.capturing = true; updateButtons();
-  $('shutterInner').innerHTML = '<div class="spin"></div>';
-  const f = $('flash'); f.classList.add('go'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('go')));
-  try {
-    const { blob, kind } = await grabBlob();
-    setStatus('PROCESSING · REDLINE v0.1');
-    await finish(blob, kind);
-  } catch (err) {
-    setStatus('CAPTURE FAILED: ' + (err.message || err.name || err));
-  } finally {
-    state.capturing = false; updateButtons();
-    $('shutterInner').innerHTML = '';
-  }
+  state.capturing = true; updateButtons(); $('shutter').classList.add('busy');
+  if (navigator.vibrate) navigator.vibrate(8);
+  const bl = $('blink'); bl.classList.add('go'); requestAnimationFrame(() => requestAnimationFrame(() => bl.classList.remove('go')));
+  try { const { blob, kind } = await grabBlob(); await finish(blob, kind); }
+  catch (err) { setStatus('CAPTURE FAILED: ' + (err.message || err.name || err)); toast('Capture failed'); }
+  finally { state.capturing = false; updateButtons(); $('shutter').classList.remove('busy'); }
 }
-
 async function onFallbackFile(e){
   const file = e.target.files && e.target.files[0];
   if (!file) return;
   e.target.value = '';
-  await finish(file, 'CAMERA APP PHOTO');
-  const url = state.captures[0].url;
-  showMessage('<img src="' + url + '" alt="Your photo" style="max-width:100%;max-height:52vh;border-radius:10px;display:block;margin:0 auto 10px">' +
-    'Photo taken. If it didn\'t appear in your Downloads, long-press the photo and choose <b>Download image</b>.', true);
+  const cap = await finish(file, 'Camera app photo');
+  openViewer(cap);
 }
 
-function toggleMode(){
-  state.mode = state.mode === 'AUTO' ? 'PRO' : 'AUTO';
-  $('modeTop').textContent = $('modeRow').textContent = state.mode;
-  $('proNote').hidden = state.mode !== 'PRO';
+/* ===== viewer ===== */
+function showSide(side){
+  const cap = state.viewing; if (!cap) return;
+  const g = side === 'graded' && cap.graded;
+  state.viewSide = g ? 'graded' : 'orig';
+  $('vImg').src = (g ? cap.graded : cap.orig).url;
+  $('vGraded').setAttribute('aria-pressed', String(!!g)); $('vOrig').setAttribute('aria-pressed', String(!g));
+  $('vGraded').disabled = !cap.graded;
+  const f = x => x.toFixed(2);
+  $('vMeta').textContent = g
+    ? 'REDLINE v0.3 · ' + MODE_NAME[cap.look] + ' · WB R×' + f(cap.m.gain[0]) + ' B×' + f(cap.m.gain[2]) + ' · EV ' + (cap.m.ev >= 0 ? '+' : '') + cap.m.ev.toFixed(2) + ' · ' + cap.graded.w + '×' + cap.graded.h
+    : 'Original · ' + cap.kind + ' · exactly as the camera delivered it' + (cap.graded ? ' (not saved yet: tap Save to keep it)' : '');
 }
+function openViewer(cap){
+  state.viewing = cap; $('viewer').hidden = false; showSide(cap.graded ? 'graded' : 'orig');
+}
+$('thumb').addEventListener('click', () => state.captures[0] && openViewer(state.captures[0]));
+$('vClose').addEventListener('click', () => { $('viewer').hidden = true; });
+$('vGraded').addEventListener('click', () => showSide('graded'));
+$('vOrig').addEventListener('click', () => showSide('orig'));
+$('vSave').addEventListener('click', () => {
+  const cap = state.viewing; if (!cap) return;
+  const f = state.viewSide === 'graded' && cap.graded ? cap.graded : cap.orig;
+  download(f.url, f.name); toast('Saved ' + (f === cap.orig ? 'original' : 'REDLINE'));
+});
 
-// Lifecycle: release the camera when hidden, reopen the same lens when visible.
+/* ===== gestures: tap to focus/expose, swipe to change mode ===== */
+let down = null;
+$('vf').addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+$('vf').addEventListener('pointerup', e => {
+  if (!down) return;
+  const dx = e.clientX - down.x, dy = e.clientY - down.y; down = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5){
+    const i = MODES.indexOf(state.look) + (dx < 0 ? 1 : -1);
+    if (i >= 0 && i < MODES.length) setLook(MODES[i]);
+    return;
+  }
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10 || !state.stream || e.target.closest('button,label')) return;
+  const r = view.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+  let x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+  if (state.facing === 'user') x = 1 - x;
+  const cr = cropFor(video.videoWidth, video.videoHeight);
+  const sx = cr[0] + x * cr[2], sy = cr[1] + y * cr[3];
+  state.meter = { x: sx, y: sy, t: performance.now() };
+  const fo = $('focus'), vr = $('vf').getBoundingClientRect();
+  fo.style.left = (e.clientX - vr.left) + 'px'; fo.style.top = (e.clientY - vr.top) + 'px';
+  fo.classList.remove('go'); void fo.offsetWidth; fo.classList.add('go');
+  const track = state.stream.getVideoTracks()[0];
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  if (caps.focusMode || caps.pointsOfInterest !== undefined){
+    track.applyConstraints({ advanced: [{ pointsOfInterest: [{ x: sx, y: sy }], focusMode: 'single-shot' }] }).catch(() => {});
+  }
+});
+
+/* ===== wiring ===== */
 document.addEventListener('visibilitychange', () => {
   state.hidden = document.hidden;
-  if (document.hidden){ stopStream(); setStatus('PAUSED'); }
-  else start();
+  if (document.hidden){ stopStream(); setStatus('PAUSED'); } else start();
 });
 window.addEventListener('pagehide', stopStream);
-
 $('shutter').addEventListener('click', capture);
 $('switch').addEventListener('click', switchCamera);
-$('modeBtn').addEventListener('click', toggleMode);
-$('lookBtn').addEventListener('click', () => {
-  if (!preview) return;
-  state.look = LOOK_ORDER[(LOOK_ORDER.indexOf(state.look) + 1) % LOOK_ORDER.length];
-  $('lookBtn').setAttribute('aria-pressed', String(state.look !== 'OFF'));
-  $('lookBtn').textContent = 'LOOK: ' + state.look;
-  $('sci').textContent = sciText(live);
-});
+$('modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLook(b.dataset.look); });
+$('zoom').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setZoom(Number(b.dataset.z)); });
 $('wideBtn').addEventListener('click', () => {
-  if (!preview) return;
-  state.wide = !state.wide;
-  $('wideBtn').setAttribute('aria-pressed', String(state.wide));
+  state.wide = !state.wide; $('wideBtn').setAttribute('aria-pressed', String(state.wide));
+  toast(state.wide ? 'Widescreen 2.39:1' : 'Full frame');
+});
+$('infoBtn').addEventListener('click', () => {
+  const r = $('readout'); r.hidden = !r.hidden; $('infoBtn').setAttribute('aria-pressed', String(!r.hidden));
   $('sci').textContent = sciText(live);
 });
-if (!preview){ $('wideBtn').disabled = true; $('lookBtn').disabled = true; $('lookBtn').textContent = 'LOOK: N/A'; $('lookBtn').setAttribute('aria-pressed','false'); }
 document.addEventListener('keydown', e => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target === document.body){ e.preventDefault(); capture(); }
 });
-
+if (!preview){
+  for (const b of document.querySelectorAll('#modes button')) if (b.dataset.look !== 'OFF') b.disabled = true;
+  setLook('OFF');
+}
 start();
 if ('serviceWorker' in navigator && servedOK) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
