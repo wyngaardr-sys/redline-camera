@@ -76,7 +76,7 @@ button:focus-visible,.fallback:focus-within{outline:2px solid var(--red);outline
 
   <section class="status">
     <div class="line" id="status">INITIALISING CAMERA</div>
-    <div class="row"><b id="modeRow">AUTO</b><span id="lens">LENS: -</span><span id="fmt">FORMAT: JPEG</span><span id="res"></span><button class="chip" id="lookBtn" aria-pressed="true">LOOK: REDLINE</button></div>
+    <div class="row"><b id="modeRow">AUTO</b><span id="lens">LENS: -</span><span id="fmt">FORMAT: JPEG</span><span id="res"></span><button class="chip" id="lookBtn" aria-pressed="true">LOOK: CINEMA</button><button class="chip" id="wideBtn" aria-pressed="false">2.39:1</button></div>
     <div class="sci" id="sci"></div>
     <div class="note" id="proNote" hidden>Manual controls are not built yet (milestone M2).</div>
     <div class="saved" id="saved" hidden></div>
@@ -105,7 +105,8 @@ const state = {
   capturing: false,
   hidden: document.hidden,
   mode: 'AUTO',
-  look: true,
+  look: 'CINEMA',
+  wide: false,
   captures: []
 };
 const view = $('view');
@@ -116,35 +117,61 @@ const NOT_SERVED = '<b>Chrome won\'t give the live camera to a file.</b><br>This
   (location.protocol === 'content:' ? 'another app (WhatsApp, Files or Downloads)' : 'a file or plain http address') +
   '. Open it from its https:// web address instead. Meanwhile, the button below uses your normal camera.';
 
-/* ===== REDLINE colour pipeline v0.1 =====
+/* ===== REDLINE colour pipeline v0.2 =====
    Works on the camera's processed sRGB output (JPEG / video), NOT sensor RAW.
    Stages: sRGB decode -> linear light -> auto white balance (grey-world, clamped,
-   half strength) -> exposure normalisation toward 18% grey (half strength,
-   highlight-protected) -> log contrast around mid-grey -> soft highlight shoulder
-   -> saturation roll-off in highlights -> subtle split tone -> sRGB encode.
-   This is a documented REDLINE transform, not a reproduction of RED IPP2. */
-const LOOK = { contrast: 1.07, knee: 0.60, satMid: 0.95, satHi: 0.75 };
+   half strength, faded out in clipped areas) -> exposure normalisation (half strength,
+   highlight-protected) -> log contrast around mid-grey with soft toe -> highlight
+   shoulder -> orange/teal colour separation -> saturation roll-off -> split tone ->
+   matte black lift -> vignette -> sRGB encode -> film grain.
+   A documented REDLINE transform, not a reproduction of RED IPP2. */
+const LOOKS = {
+  CINEMA:  { bias: 0.90, con: 1.32, knee: 0.52, lift: 0.005, satMid: 0.93, satHi: 0.58, axis: 1.25, ortho: 0.60,
+             sh: [0.93, 1.0, 1.08], hi: [1.06, 1.0, 0.92], vig: 0.30, grain: 0.035 },
+  NATURAL: { bias: 1.00, con: 1.07, knee: 0.60, lift: 0.0,   satMid: 0.95, satHi: 0.75, axis: 1.0,  ortho: 1.0,
+             sh: [0.985, 1.0, 1.025], hi: [1.025, 1.0, 0.975], vig: 0.0, grain: 0.0 }
+};
+const LOOK_ORDER = ['CINEMA', 'NATURAL', 'OFF'];
 const FS = `precision highp float;
-varying vec2 v; uniform sampler2D t; uniform vec3 gain; uniform float expo, on, con, knee, satMid, satHi;
+varying vec2 v; uniform sampler2D t;
+uniform vec3 gain, shT, hiT; uniform vec2 crop;
+uniform float expo, on, con, knee, lift, satMid, satHi, axisG, orthoG, vig, grain, aspect, seed, gscale;
 vec3 toLin(vec3 c){ return mix(c/12.92, pow((c+0.055)/1.055, vec3(2.4)), step(0.04045, c)); }
 vec3 toSRGB(vec3 c){ c=clamp(c,0.0,1.0); return mix(c*12.92, 1.055*pow(c, vec3(1.0/2.4))-0.055, step(0.0031308, c)); }
 float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
+const vec3 AX = vec3(0.816, -0.188, -0.547);   // orange (+) / teal (-) chroma axis, linear light
 void main(){
-  vec3 s = texture2D(t, v).rgb;
+  vec3 s = texture2D(t, vec2(v.x, crop.x + v.y * crop.y)).rgb;
   if (on < 0.5) { gl_FragColor = vec4(s, 1.0); return; }
-  // Clipped pixels carry no colour information: fade white balance out there
-  // so blown whites stay neutral instead of picking up a tint.
+  // Clipped pixels carry no colour information: fade white balance out there.
   float clipW = smoothstep(0.90, 1.0, min(s.r, min(s.g, s.b)));
   vec3 c = toLin(s) * mix(gain, vec3(1.0), clipW) * expo;
+  // Tone: log contrast around 18% grey, soft toe, highlight shoulder.
   float L = max(luma(c), 1e-5);
   float Lc = 0.18 * pow(L / 0.18, con);
-  Lc = mix(Lc, L, smoothstep(0.03, 0.0, L));   // soft toe: keep deep-shadow detail
+  Lc = mix(Lc, L, smoothstep(0.03, 0.0, L));
   float Ls = Lc < knee ? Lc : knee + (1.0 - knee) * (1.0 - exp(-(Lc - knee) / (1.0 - knee)));
   c *= Ls / L;
+  // Colour: push chroma onto the orange/teal axis (skin sits on the orange side).
   float y = luma(c);
-  c = mix(vec3(y), c, mix(satMid, satHi, smoothstep(0.55, 0.95, y)));
-  c *= mix(vec3(0.985, 1.0, 1.025), vec3(1.025, 1.0, 0.975), smoothstep(0.05, 0.6, y));
-  gl_FragColor = vec4(toSRGB(c), 1.0);
+  vec3 d = c - y; float k = dot(d, AX); vec3 o = d - k * AX;
+  c = y + k * AX * axisG + o * orthoG;
+  c = max(c, 0.0); y = luma(c);
+  c = mix(vec3(y), c, mix(satMid, satHi, smoothstep(0.45, 0.95, y)));
+  // Split tone: cool shadows, warm highlights.
+  c *= mix(vec3(1.0), shT, 1.0 - smoothstep(0.0, 0.25, y)) * mix(vec3(1.0), hiT, smoothstep(0.3, 0.9, y));
+  // Matte blacks and vignette.
+  c = c * (1.0 - lift) + lift * shT;
+  vec2 q = (v - 0.5) * vec2(aspect, 1.0);
+  float r = length(q) / length(vec2(aspect, 1.0) * 0.5);
+  c *= 1.0 - vig * smoothstep(0.35, 1.05, r);
+  vec3 outc = toSRGB(c);
+  // Film grain, strongest in the mid-tones, sized as if the frame were 1080 px tall.
+  float gy = luma(outc);
+  float n = hash(floor(v * vec2(aspect, 1.0) * gscale) + seed) - 0.5;
+  outc += n * grain * (1.0 - abs(gy * 2.0 - 1.0) * 0.7);
+  gl_FragColor = vec4(clamp(outc, 0.0, 1.0), 1.0);
 }`;
 const VS = `attribute vec2 p; varying vec2 v; void main(){ v = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p, 0.0, 1.0); }`;
 
@@ -162,16 +189,23 @@ function createGrader(canvas){
   const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
   for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
-  const u = n => gl.getUniformLocation(prog, n);
-  const U = { gain: u('gain'), expo: u('expo'), on: u('on'), con: u('con'), knee: u('knee'), satMid: u('satMid'), satHi: u('satHi') };
+  const U = {}; for (const n of ['gain','shT','hiT','crop','expo','on','con','knee','lift','satMid','satHi','axisG','orthoG','vig','grain','aspect','seed','gscale']) U[n] = gl.getUniformLocation(prog, n);
   return {
     maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-    draw(src, m, on){
+    draw(src, m, lookName, crop, seed){
+      const L = LOOKS[lookName] || LOOKS.NATURAL, on = lookName !== 'OFF';
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src);
-      gl.uniform3fv(U.gain, m.gain); gl.uniform1f(U.expo, m.expo); gl.uniform1f(U.on, on ? 1 : 0);
-      gl.uniform1f(U.con, LOOK.contrast); gl.uniform1f(U.knee, LOOK.knee);
-      gl.uniform1f(U.satMid, LOOK.satMid); gl.uniform1f(U.satHi, LOOK.satHi);
+      gl.uniform3fv(U.gain, m.gain); gl.uniform1f(U.expo, m.expo * (on ? L.bias : 1)); gl.uniform1f(U.on, on ? 1 : 0);
+      gl.uniform2fv(U.crop, crop || [0, 1]);
+      gl.uniform1f(U.con, L.con); gl.uniform1f(U.knee, L.knee); gl.uniform1f(U.lift, L.lift);
+      gl.uniform1f(U.satMid, L.satMid); gl.uniform1f(U.satHi, L.satHi);
+      gl.uniform1f(U.axisG, L.axis); gl.uniform1f(U.orthoG, L.ortho);
+      gl.uniform3fv(U.shT, L.sh); gl.uniform3fv(U.hiT, L.hi);
+      gl.uniform1f(U.vig, L.vig); gl.uniform1f(U.grain, L.grain);
+      gl.uniform1f(U.aspect, canvas.width / canvas.height);
+      gl.uniform1f(U.gscale, Math.min(1080, canvas.height));
+      gl.uniform1f(U.seed, seed || 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   };
@@ -208,24 +242,32 @@ function measure(src){
   return { gain, expo: e, ev: Math.log2(e), p98 };
 }
 
+// 2.39:1 widescreen crop (centre), as a fraction of the source height.
+function cropFor(w, h){
+  if (!state.wide || !w || !h) return [0, 1];
+  const ch = Math.min(1, (w / h) / 2.39);
+  return [(1 - ch) / 2, ch];
+}
+
 let preview = null, live = { gain: [1, 1, 1], expo: 1, ev: 0 }, frameN = 0;
 try { preview = createGrader(view); } catch (e) { preview = null; console.warn('REDLINE look unavailable', e); }
-if (!preview){ state.look = false; }
+if (!preview){ state.look = 'OFF'; }
 
 function fitView(){
-  const vw = video.videoWidth, vh = video.videoHeight; if (!vw || !vh) return;
+  const vw = video.videoWidth, vh0 = video.videoHeight; if (!vw || !vh0) return;
+  const vh = Math.round(vh0 * cropFor(vw, vh0)[1]);
   const box = $('vf'), bw = box.clientWidth, bh = box.clientHeight;
   const k = Math.min(bw / vw, bh / vh), cw = Math.round(vw * k), ch = Math.round(vh * k);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const W = Math.min(vw, Math.round(cw * dpr)), H = Math.min(vh, Math.round(ch * dpr));
   if (view.width !== W || view.height !== H){ view.width = W; view.height = H; }
-  if (view.style.width !== cw + 'px'){ view.style.width = cw + 'px'; view.style.height = ch + 'px'; }
+  if (view.style.width !== cw + 'px' || view.style.height !== ch + 'px'){ view.style.width = cw + 'px'; view.style.height = ch + 'px'; }
 }
 function sciText(m){
   if (!preview) return 'REDLINE LOOK UNAVAILABLE ON THIS DEVICE (NO WEBGL)';
-  if (!state.look) return 'LOOK OFF · SHOWING CAMERA OUTPUT AS DELIVERED';
+  if (state.look === 'OFF') return 'LOOK OFF · SHOWING CAMERA OUTPUT AS DELIVERED';
   const f = x => x.toFixed(2);
-  return 'REDLINE v0.1 · WB R×' + f(m.gain[0]) + ' B×' + f(m.gain[2]) + ' · EV ' + (m.ev >= 0 ? '+' : '') + m.ev.toFixed(2) + ' · HIGHLIGHT ROLL-OFF';
+  return 'REDLINE v0.2 · ' + state.look + ' · WB R×' + f(m.gain[0]) + ' B×' + f(m.gain[2]) + ' · EV ' + (m.ev >= 0 ? '+' : '') + m.ev.toFixed(2) + (state.wide ? ' · 2.39:1' : '');
 }
 function renderLoop(){
   requestAnimationFrame(renderLoop);
@@ -238,7 +280,7 @@ function renderLoop(){
   if (frameN % 30 === 0) $('sci').textContent = sciText(live);
   frameN++;
   fitView();
-  preview.draw(video, live, state.look);
+  preview.draw(video, live, state.look, cropFor(video.videoWidth, video.videoHeight), (frameN % 64) * 0.137);
 }
 requestAnimationFrame(renderLoop);
 
@@ -247,11 +289,13 @@ async function gradeFull(blob){
   const m = measure(bmp);
   const c = document.createElement('canvas');
   const g = createGrader(c);
+  const crop = cropFor(bmp.width, bmp.height);
   const k = Math.min(1, g.maxTex / Math.max(bmp.width, bmp.height));
-  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  const sw = Math.round(bmp.width * k), sh = Math.round(bmp.height * k);
+  c.width = sw; c.height = Math.round(sh * crop[1]);
   let src = bmp;
-  if (k < 1){ const tmp = document.createElement('canvas'); tmp.width = c.width; tmp.height = c.height; tmp.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); src = tmp; }
-  g.draw(src, m, true);
+  if (k < 1){ const tmp = document.createElement('canvas'); tmp.width = sw; tmp.height = sh; tmp.getContext('2d').drawImage(bmp, 0, 0, sw, sh); src = tmp; }
+  g.draw(src, m, state.look, crop, Math.random() * 10);
   const out = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Encoding failed')), 'image/jpeg', 0.95));
   bmp.close && bmp.close();
   return { blob: out, m };
@@ -405,7 +449,7 @@ function save(blob, kind, tag){
 // Non-destructive: keep the camera's original, then add the REDLINE version.
 async function finish(blob, kind){
   const orig = save(blob, kind, '_ORIGINAL');
-  if (!state.look || !preview){ $('saved').textContent = 'Saved ' + orig + ' (look off, original only).'; return; }
+  if (state.look === 'OFF' || !preview){ $('saved').textContent = 'Saved ' + orig + ' (look off, original only).'; return; }
   try {
     const { blob: graded, m } = await gradeFull(blob);
     const name = save(graded, kind + ' + REDLINE', '_REDLINE');
@@ -462,12 +506,18 @@ $('switch').addEventListener('click', switchCamera);
 $('modeBtn').addEventListener('click', toggleMode);
 $('lookBtn').addEventListener('click', () => {
   if (!preview) return;
-  state.look = !state.look;
-  $('lookBtn').setAttribute('aria-pressed', String(state.look));
-  $('lookBtn').textContent = 'LOOK: ' + (state.look ? 'REDLINE' : 'OFF');
+  state.look = LOOK_ORDER[(LOOK_ORDER.indexOf(state.look) + 1) % LOOK_ORDER.length];
+  $('lookBtn').setAttribute('aria-pressed', String(state.look !== 'OFF'));
+  $('lookBtn').textContent = 'LOOK: ' + state.look;
   $('sci').textContent = sciText(live);
 });
-if (!preview){ $('lookBtn').disabled = true; $('lookBtn').textContent = 'LOOK: N/A'; $('lookBtn').setAttribute('aria-pressed','false'); }
+$('wideBtn').addEventListener('click', () => {
+  if (!preview) return;
+  state.wide = !state.wide;
+  $('wideBtn').setAttribute('aria-pressed', String(state.wide));
+  $('sci').textContent = sciText(live);
+});
+if (!preview){ $('wideBtn').disabled = true; $('lookBtn').disabled = true; $('lookBtn').textContent = 'LOOK: N/A'; $('lookBtn').setAttribute('aria-pressed','false'); }
 document.addEventListener('keydown', e => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target === document.body){ e.preventDefault(); capture(); }
 });
