@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101214">
+<title>REDLINE Camera</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+/*
+VOICE  instrument panel: terse, uppercase status, nothing decorative
+IDEA   the Flutter starter's dark camera screen, rebuilt for the browser
+PICTURE the live viewfinder is the picture, filling the screen
+COLOUR #101214 body, #08090a viewfinder, one red #d64a3b for shutter and brand
+TYPE   system sans, heavy tracked wordmark, small status lines
+*/
+:root{--bg:#101214;--vf:#08090a;--panel:#202428;--red:#d64a3b;--ink:#f2f2f2;--dim:rgba(255,255,255,.55);--ok:#9db9a4;color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+.app{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);max-width:760px;margin:0 auto}
+.top{display:flex;align-items:center;gap:9px;padding:12px 20px 14px}
+.brand{font-size:18px;font-weight:800;letter-spacing:2.4px}
+.mode{margin-left:auto;font-weight:700;letter-spacing:1.5px}
+.vf{flex:1;margin:0 12px;border-radius:18px;background:var(--vf);overflow:hidden;position:relative;display:grid;place-items:center}
+video{width:100%;height:100%;object-fit:contain;display:none}
+video.on{display:block}video.mirror{transform:scaleX(-1)}
+.msg{padding:24px;text-align:center;color:var(--dim);max-width:30em}
+.msg b{color:var(--ink)}
+.spin{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--red);border-radius:50%;animation:s 0.9s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.flash.go{opacity:.6;transition:none}
+.status{padding:12px 20px 8px}
+.line{font-size:10px;letter-spacing:1.1px;color:rgba(255,255,255,.7);min-height:14px}
+.row{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px;font-size:11px;color:var(--dim)}
+.row b{color:var(--ink);font-size:14px}
+.note{font-size:10px;color:var(--dim);margin-top:5px}
+.saved{font-size:10px;color:var(--ok);margin-top:5px}
+.strip{display:flex;gap:8px;overflow-x:auto;padding:4px 20px 0;min-height:0}
+.strip a{flex:none;width:52px;height:52px;border-radius:8px;overflow:hidden;border:1px solid #333}
+.strip img{width:100%;height:100%;object-fit:cover;display:block}
+.ctl{display:flex;align-items:center;justify-content:space-between;padding:12px 22px 22px}
+.icon{width:48px;height:48px;border-radius:50%;border:0;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}
+.icon:disabled{opacity:.35;cursor:default}
+.icon svg{width:27px;height:27px}
+.shutter{width:76px;height:76px;border-radius:50%;border:4px solid #fff;background:transparent;display:grid;place-items:center;padding:0;cursor:pointer}
+.shutter i{width:60px;height:60px;border-radius:50%;background:var(--red);display:grid;place-items:center}
+.shutter:disabled{opacity:.5;cursor:default}
+.shutter .spin{width:24px;height:24px;border-width:2px;border-top-color:#fff}
+button:focus-visible,.fallback:focus-within{outline:2px solid var(--red);outline-offset:3px}
+.fallback{display:none;margin-top:14px}
+.fallback.on{display:inline-block}
+.fallback label{display:inline-block;padding:11px 18px;border-radius:999px;background:var(--panel);color:var(--ink);cursor:pointer;font-size:14px}
+.fallback input{position:absolute;opacity:0;width:1px;height:1px}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}.flash{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d64a3b" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    <span class="brand">REDLINE</span>
+    <span class="mode" id="modeTop">AUTO</span>
+  </header>
+
+  <main class="vf" id="vf">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="msg" id="msg"><div class="spin" style="margin:auto"></div></div>
+    <div class="flash" id="flash"></div>
+  </main>
+
+  <section class="status">
+    <div class="line" id="status">INITIALISING CAMERA</div>
+    <div class="row"><b id="modeRow">AUTO</b><span id="lens">LENS: -</span><span id="fmt">FORMAT: JPEG</span><span id="res"></span></div>
+    <div class="note" id="proNote" hidden>Manual controls are not built yet (milestone M2).</div>
+    <div class="saved" id="saved" hidden></div>
+  </section>
+  <div class="strip" id="strip" aria-label="Captures from this session"></div>
+
+  <nav class="ctl">
+    <button class="icon" id="switch" aria-label="Switch camera" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/><path d="M14 9.5l.4 1.6-1.6.3M10 16.5l-.4-1.6 1.6-.3"/></svg>
+    </button>
+    <button class="shutter" id="shutter" aria-label="Take photo" disabled><i id="shutterInner"></i></button>
+    <button class="icon" id="modeBtn" aria-label="Toggle camera mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    </button>
+  </nav>
+</div>
+
+<script>
+{
+const $ = id => document.getElementById(id);
+const video = $('video'), msg = $('msg');
+const state = {
+  stream: null,
+  facing: 'environment',   // kept across backgrounding and failed switches
+  starting: false,
+  capturing: false,
+  hidden: document.hidden,
+  mode: 'AUTO',
+  captures: []
+};
+
+const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const servedOK = location.protocol === 'https:' || (location.protocol === 'http:' && local);
+const NOT_SERVED = '<b>Chrome won\'t give the live camera to a file.</b><br>This page was opened from ' +
+  (location.protocol === 'content:' ? 'another app (WhatsApp, Files or Downloads)' : 'a file or plain http address') +
+  '. Open it from its https:// web address instead. Meanwhile, the button below uses your normal camera.';
+function setStatus(t){ $('status').textContent = t; }
+function lensLabel(f){ return f === 'user' ? 'FRONT' : 'BACK'; }
+function showMessage(html, fallback){
+  video.classList.remove('on');
+  msg.hidden = false;
+  msg.innerHTML = html + (fallback ? fallbackHTML() : '');
+  const inp = msg.querySelector('input'); if (inp) inp.addEventListener('change', onFallbackFile);
+}
+function fallbackHTML(){
+  return '<div class="fallback on"><label>Use the phone\'s camera app<input type="file" accept="image/*" capture="environment"></label></div>';
+}
+function updateButtons(){
+  const live = !!state.stream && !state.starting;
+  $('shutter').disabled = !live || state.capturing;
+  $('switch').disabled = !live || state.capturing;
+}
+
+function stopStream(){
+  if (state.stream){ state.stream.getTracks().forEach(t => t.stop()); }
+  state.stream = null;
+  video.srcObject = null;
+  video.classList.remove('on');
+  updateButtons();
+}
+
+async function openStream(facing){
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: { ideal: facing }, width: { ideal: 4096 }, height: { ideal: 2160 } }
+  });
+  // Page hidden while the permission prompt / camera was opening: release it.
+  if (state.hidden){ stream.getTracks().forEach(t => t.stop()); return false; }
+  state.stream = stream;
+  state.facing = facing;
+  video.srcObject = stream;
+  video.classList.toggle('mirror', facing === 'user');
+  await video.play().catch(() => {});
+  video.classList.add('on');
+  msg.hidden = true;
+  const s = stream.getVideoTracks()[0].getSettings();
+  $('lens').textContent = 'LENS: ' + lensLabel(s.facingMode || facing);
+  $('res').textContent = s.width && s.height ? s.width + '×' + s.height : '';
+  setStatus('AUTO EXPOSURE · AUTO WHITE BALANCE (BROWSER)');
+  return true;
+}
+
+function explain(err){
+  const n = err && err.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError')
+    return servedOK
+      ? '<b>Camera permission was refused.</b><br>Tap the icon left of the address bar, set Camera to Allow, then reload.'
+      : NOT_SERVED;
+  if (n === 'NotFoundError' || n === 'OverconstrainedError')
+    return '<b>No usable camera was found.</b>';
+  if (n === 'NotReadableError')
+    return '<b>The camera is busy.</b><br>Another app may be using it. Close it and reload.';
+  return '<b>Unable to start camera.</b><br>' + (err && err.message ? err.message : String(err));
+}
+
+async function start(){
+  if (state.starting || state.stream || state.hidden) return;
+  if (!servedOK || !window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus('LIVE CAMERA UNAVAILABLE · NOT OPENED FROM A WEB ADDRESS');
+    showMessage(NOT_SERVED, true);
+    return;
+  }
+  state.starting = true; updateButtons();
+  showMessage('<div class="spin" style="margin:auto"></div>');
+  try {
+    await openStream(state.facing);
+  } catch (err) {
+    setStatus('CAMERA ERROR: ' + (err.name || 'UNKNOWN'));
+    showMessage(explain(err), true);
+  } finally {
+    state.starting = false; updateButtons();
+  }
+}
+
+async function switchCamera(){
+  if (!state.stream || state.starting || state.capturing) return;
+  const previous = state.facing;
+  const next = previous === 'user' ? 'environment' : 'user';
+  state.starting = true;
+  setStatus('SWITCHING CAMERA');
+  stopStream();  // some phones cannot open two cameras at once
+  showMessage('<div class="spin" style="margin:auto"></div>');
+  try {
+    await openStream(next);
+    const got = state.stream && state.stream.getVideoTracks()[0].getSettings().facingMode;
+    if (got && got !== next) setStatus('ONLY ONE CAMERA AVAILABLE · KEPT ' + lensLabel(got));
+  } catch (err) {
+    try {
+      await openStream(previous);
+      setStatus('LENS SWITCH FAILED · KEPT ' + lensLabel(previous) + ' CAMERA');
+    } catch (err2) {
+      setStatus('LENS SWITCH FAILED: ' + (err.name || 'UNKNOWN'));
+      showMessage(explain(err2), true);
+    }
+  } finally {
+    state.starting = false; updateButtons();
+  }
+}
+
+async function grabBlob(){
+  const track = state.stream.getVideoTracks()[0];
+  // Real still photo where the browser supports it (mainly Chrome on Android).
+  if ('ImageCapture' in window){
+    try {
+      const blob = await new ImageCapture(track).takePhoto();
+      if (blob && blob.size) return { blob, kind: 'STILL PHOTO' };
+    } catch (_) { /* fall through to a preview frame */ }
+  }
+  const w = video.videoWidth, h = video.videoHeight;
+  if (!w || !h) throw new Error('No frame available yet');
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(video, 0, 0, w, h);
+  const blob = await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Encoding failed')), 'image/jpeg', 0.95));
+  return { blob, kind: 'PREVIEW FRAME' };
+}
+
+function stamp(){ return new Date().toISOString().replace(/:/g, '-').replace(/\..+/, ''); }
+
+function save(blob, kind){
+  const type = blob.type || 'image/jpeg';
+  const ext = type.includes('png') ? 'png' : type.includes('heic') ? 'heic' : 'jpg';
+  const name = 'REDLINE_' + stamp() + '.' + ext;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  state.captures.unshift({ url, name });
+  $('strip').insertAdjacentHTML('afterbegin', '<a href="' + url + '" download="' + name + '" title="' + name + '"><img alt="Capture ' + name + '" src="' + url + '"></a>');
+  $('fmt').textContent = 'FORMAT: ' + ext.toUpperCase();
+  $('saved').hidden = false;
+  $('saved').textContent = 'Saved ' + name + ' to your downloads (' + kind.toLowerCase() + ').';
+  setStatus('CAPTURE SAVED · ' + kind + ' · ' + ext.toUpperCase());
+}
+
+async function capture(){
+  if (!state.stream || state.capturing || state.starting) return;
+  state.capturing = true; updateButtons();
+  $('shutterInner').innerHTML = '<div class="spin"></div>';
+  const f = $('flash'); f.classList.add('go'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('go')));
+  try {
+    const { blob, kind } = await grabBlob();
+    save(blob, kind);
+  } catch (err) {
+    setStatus('CAPTURE FAILED: ' + (err.message || err.name || err));
+  } finally {
+    state.capturing = false; updateButtons();
+    $('shutterInner').innerHTML = '';
+  }
+}
+
+function onFallbackFile(e){
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  save(file, 'CAMERA APP PHOTO');
+  e.target.value = '';
+  const url = state.captures[0].url;
+  showMessage('<img src="' + url + '" alt="Your photo" style="max-width:100%;max-height:52vh;border-radius:10px;display:block;margin:0 auto 10px">' +
+    'Photo taken. If it didn\'t appear in your Downloads, long-press the photo and choose <b>Download image</b>.', true);
+}
+
+function toggleMode(){
+  state.mode = state.mode === 'AUTO' ? 'PRO' : 'AUTO';
+  $('modeTop').textContent = $('modeRow').textContent = state.mode;
+  $('proNote').hidden = state.mode !== 'PRO';
+}
+
+// Lifecycle: release the camera when hidden, reopen the same lens when visible.
+document.addEventListener('visibilitychange', () => {
+  state.hidden = document.hidden;
+  if (document.hidden){ stopStream(); setStatus('PAUSED'); }
+  else start();
+});
+window.addEventListener('pagehide', stopStream);
+
+$('shutter').addEventListener('click', capture);
+$('switch').addEventListener('click', switchCamera);
+$('modeBtn').addEventListener('click', toggleMode);
+document.addEventListener('keydown', e => {
+  if ((e.key === ' ' || e.key === 'Enter') && e.target === document.body){ e.preventDefault(); capture(); }
+});
+
+start();
+if ('serviceWorker' in navigator && servedOK) navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
