@@ -178,9 +178,9 @@ const NOT_SERVED = '<b>Chrome won\'t give the live camera to a file.</b><br>This
    A documented REDLINE transform, not a reproduction of RED IPP2 or Apple's pipeline. */
 const LOOKS = {
   PHOTO:  { bias: 1.08, ltm: 0.38, sharp: 0.45, con: 1.12, knee: 0.75, lift: 0.0,   satMid: 1.08, satHi: 0.85, axis: 1.0,  ortho: 1.0,
-            sh: [1.0, 1.0, 1.0], hi: [1.012, 1.0, 0.99], vig: 0.0 },
+            sh: [1.0, 1.0, 1.0], hi: [1.012, 1.0, 0.99], vig: 0.0, veg: 0.35, sky: 0.30, skyDeep: 0.10 },
   CINEMA: { bias: 0.93, ltm: 0.25, sharp: 0.30, con: 1.30, knee: 0.52, lift: 0.003, satMid: 0.92, satHi: 0.60, axis: 1.22, ortho: 0.62,
-            sh: [0.94, 1.0, 1.07], hi: [1.05, 1.0, 0.93], vig: 0.15 }
+            sh: [0.94, 1.0, 1.07], hi: [1.05, 1.0, 0.93], vig: 0.15, veg: 0.80, sky: 0.25, skyDeep: 0.12 }
 };
 const MODES = ['CINEMA', 'PHOTO', 'OFF'];
 const MODE_NAME = { CINEMA: 'CINEMA', PHOTO: 'PHOTO', OFF: 'ORIGINAL' };
@@ -207,8 +207,16 @@ void main(){
 const FS_GRADE = GLSL_COMMON + `
 varying vec2 v; uniform sampler2D t, baseT;
 uniform vec3 gain, shT, hiT; uniform vec4 crop; uniform vec2 tx, bstp;
-uniform float expo, on, ltm, sharp, con, knee, lift, satMid, satHi, axisG, orthoG, vig, aspect;
+uniform float expo, on, ltm, sharp, con, knee, lift, satMid, satHi, axisG, orthoG, vig, aspect, veg, sky, skyDeep;
 const vec3 AX = vec3(0.816, -0.188, -0.547);   // orange (+) / teal (-) chroma axis
+vec3 rgb2hsv(vec3 c){
+  vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+float bump(float h, float centre, float width){ float d = abs(fract(h - centre + 0.5) - 0.5); return smoothstep(width, width * 0.4, d); }
 void main(){
   vec2 uv = crop.xy + v * crop.zw;
   vec3 s = texture2D(t, uv).rgb;
@@ -238,13 +246,29 @@ void main(){
   // Colour.
   float y = luma(c);
   vec3 d = c - y; float k = dot(d, AX); vec3 o = d - k * AX;
-  c = max(y + k * AX * axisG + o * orthoG, 0.0); y = luma(c);
+  // Foliage is exempt from the off-axis muting, so CINEMA greens stay rich.
+  vec3 hl = rgb2hsv(c);
+  float wvl = bump(hl.x, 0.30, 0.14) * smoothstep(0.10, 0.30, hl.y);
+  c = max(y + k * AX * axisG + o * mix(orthoG, 1.0, wvl), 0.0); y = luma(c);
   c = max(mix(vec3(y), c, mix(satMid, satHi, smoothstep(0.45, 0.95, y))), 0.0);
   c *= mix(vec3(1.0), shT, 1.0 - smoothstep(0.0, 0.25, y)) * mix(vec3(1.0), hiT, smoothstep(0.3, 0.9, y));
   c = c * (1.0 - lift) + lift * shT;
   vec2 qv = (v - 0.5) * vec2(aspect, 1.0);
   c *= 1.0 - vig * smoothstep(0.35, 1.05, length(qv) / length(vec2(aspect, 1.0) * 0.5));
-  gl_FragColor = vec4(toSRGB(c), 1.0);
+  // Memory colours, in display space: foliage greens (65-150 deg) and sky blues (177-241 deg)
+  // get a vibrance-style boost (less for colours already saturated, limited so no channel
+  // clips), and skies deepen slightly like a polariser. Needs real colour to act, so
+  // neutrals, whites, overcast skies and skin (10-50 deg) are untouched.
+  vec3 od = toSRGB(c);
+  vec3 hsv = rgb2hsv(od);
+  float gate = smoothstep(0.08, 0.25, hsv.y);
+  float wv = bump(hsv.x, 0.30, 0.12) * gate, ws = bump(hsv.x, 0.58, 0.09) * gate;
+  float kk = 1.0 + (veg * wv + sky * ws) * (1.0 - 0.5 * hsv.y);
+  float yo = luma(od), mn = min(od.r, min(od.g, od.b));
+  if (mn < yo) kk = min(kk, 0.9 * yo / (yo - mn));
+  od = clamp(yo + (od - yo) * kk, 0.0, 1.0);
+  od *= 1.0 - skyDeep * ws * smoothstep(0.1, 0.5, yo);
+  gl_FragColor = vec4(od, 1.0);
 }`;
 
 function createGrader(canvas){
@@ -261,7 +285,7 @@ function createGrader(canvas){
     return { pr, U };
   };
   const down = program(VS_FB, FS_DOWN, ['t', 'crop', 'stp']);
-  const grade = program(VS, FS_GRADE, ['t','baseT','gain','shT','hiT','crop','tx','bstp','expo','on','ltm','sharp','con','knee','lift','satMid','satHi','axisG','orthoG','vig','aspect']);
+  const grade = program(VS, FS_GRADE, ['t','baseT','gain','shT','hiT','crop','tx','bstp','expo','on','ltm','sharp','con','knee','lift','satMid','satHi','axisG','orthoG','vig','aspect','veg','sky','skyDeep']);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
@@ -307,6 +331,7 @@ function createGrader(canvas){
       gl.uniform1f(U.satMid, L.satMid); gl.uniform1f(U.satHi, L.satHi);
       gl.uniform1f(U.axisG, L.axis); gl.uniform1f(U.orthoG, L.ortho);
       gl.uniform3fv(U.shT, L.sh); gl.uniform3fv(U.hiT, L.hi); gl.uniform1f(U.vig, L.vig);
+      gl.uniform1f(U.veg, L.veg); gl.uniform1f(U.sky, L.sky); gl.uniform1f(U.skyDeep, L.skyDeep);
       gl.uniform1f(U.aspect, canvas.width / canvas.height);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
@@ -328,10 +353,12 @@ function measure(src, pt){
     let w = 1;
     if (pt){ const dx = (p % 96) / 96 - pt.x, dy = Math.floor(p / 96) / 54 - pt.y; w = Math.exp(-(dx*dx + dy*dy) / 0.012) + 0.04; }
     lums.push(Y); logSum += w * Math.log(Y + 1e-4); wSum += w;
-    if (Y > 0.03 && Y < 0.85 && Math.max(R, G, B) < 0.98){ r += R; g += G; b += B; n++; }
+    // Only near-neutral pixels vote, so a blue sky or green field is not "corrected" toward grey.
+    const mx = Math.max(d[i], d[i+1], d[i+2]), mn = Math.min(d[i], d[i+1], d[i+2]);
+    if (Y > 0.03 && Y < 0.85 && mx < 250 && (mx - mn) < 0.2 * mx){ r += R; g += G; b += B; n++; }
   }
   let gain = [1, 1, 1];
-  if (n > 50 && r > 0 && b > 0){
+  if (n > 30 && r > 0 && b > 0){
     gain = [clamp(g / r, 0.85, 1.15), 1, clamp(g / b, 0.85, 1.15)].map(x => 1 + (x - 1) * 0.5);
   }
   lums.sort((a, c) => a - c);
@@ -369,7 +396,7 @@ function sciText(m){
   if (!preview) return 'Grading unavailable on this device (no WebGL).';
   if (state.look === 'OFF') return 'ORIGINAL · camera output as delivered';
   const L = LOOKS[state.look], f = x => x.toFixed(2);
-  return 'REDLINE v0.4 · ' + state.look + ' · WB R×' + f(m.gain[0]) + ' B×' + f(m.gain[2]) +
+  return 'REDLINE v0.5 · ' + state.look + ' · WB R×' + f(m.gain[0]) + ' B×' + f(m.gain[2]) +
     ' · EV ' + (m.ev >= 0 ? '+' : '') + m.ev.toFixed(2) + ' · HDR ' + Math.round(L.ltm * 100) + '%' +
     (state.merge ? ' · MERGE ' + MERGE_CFG.frames : '') + (state.meter ? ' · TAP-METERED' : '') + (state.wide ? ' · 2.39:1' : '');
 }
@@ -747,7 +774,7 @@ function showSide(side){
   $('vGraded').disabled = !cap.graded;
   const f = x => x.toFixed(2);
   $('vMeta').textContent = g
-    ? 'REDLINE v0.4 · ' + MODE_NAME[cap.look] + ' · WB R×' + f(cap.m.gain[0]) + ' B×' + f(cap.m.gain[2]) + ' · EV ' + (cap.m.ev >= 0 ? '+' : '') + cap.m.ev.toFixed(2) + ' · ' + cap.graded.w + '×' + cap.graded.h +
+    ? 'REDLINE v0.5 · ' + MODE_NAME[cap.look] + ' · WB R×' + f(cap.m.gain[0]) + ' B×' + f(cap.m.gain[2]) + ' · EV ' + (cap.m.ev >= 0 ? '+' : '') + cap.m.ev.toFixed(2) + ' · ' + cap.graded.w + '×' + cap.graded.h +
       (cap.merged ? '\n' + (cap.merged.bracketed ? 'HDR bracket merge, ' : 'Burst merge, ') + cap.merged.n + ' frames · max shift ' +
         Math.max(...cap.merged.shifts.map(s => Math.hypot(s[0], s[1]))).toFixed(0) + ' px · moving areas rejected ' + cap.merged.ghostPct.toFixed(1) + '% · ' + cap.merged.ms + ' ms' : '\nSingle frame')
     : 'Original · ' + cap.kind + ' · exactly as the camera delivered it' + (cap.graded ? ' (not saved yet: tap Save to keep it)' : '');
